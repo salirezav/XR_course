@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>AR/VR Physics Classroom</title>
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
+
+    <script>
+      /**
+       * COMPONENT 1: OBJECT LOGIC (The "Peace Treaty")
+       * Attached to the CUBE/DUCK. 
+       * Listens for grab events from ANY source (Hand or Controller) 
+       * and toggles gravity on/off.
+       */
+      AFRAME.registerComponent('auto-toggle-physics', {
+        init: function () {
+          // LISTEN: When a hand or controller grabs this object
+          this.el.addEventListener('grab-start', (evt) => {
+            if (this.el.body) {
+              // Turn OFF gravity (Kinematic) so hand can move it
+              this.el.body.type = CANNON.Body.KINEMATIC;
+              this.el.body.velocity.set(0,0,0); // Stop moving
+            }
+          });
+
+          // LISTEN: When released
+          this.el.addEventListener('grab-end', (evt) => {
+            if (this.el.body) {
+              // Turn ON gravity (Dynamic) so it falls
+              this.el.body.type = CANNON.Body.DYNAMIC;
+              
+              // (Optional) Add throwing velocity here if needed
+              // For simplicity in this fix, we just drop it.
+            }
+          });
+        }
+      });
+
+      /**
+       * COMPONENT 2: CONTROLLER LOGIC
+       * Attached to the CONTROLLERS.
+       * 1. Finds objects.
+       * 2. Emits 'grab-start' (so Component 1 knows what to do).
+       * 3. Parents the object to the controller.
+       */
+      AFRAME.registerComponent('controller-grab', {
+        init: function () {
+          this.grabbedEl = null;
+          this.raycaster = this.el.components.raycaster;
+
+          // TRIGGER PRESSED
+          this.el.addEventListener('triggerdown', (evt) => {
+            const intersections = this.raycaster.intersectedEls;
+            if (intersections.length > 0) {
+              const object = intersections[0];
+              
+              // Only grab if allowed
+              if (object.classList.contains('grabbable')) {
+                this.grabbedEl = object;
+                
+                // A. Tell the object it's being grabbed (Triggers Component 1)
+                this.grabbedEl.emit('grab-start');
+                
+                // B. Attach to controller
+                this.grabbedEl.object3D.attach(this.el.object3D);
+              }
+            }
+          });
+
+          // TRIGGER RELEASED
+          this.el.addEventListener('triggerup', (evt) => {
+            if (this.grabbedEl) {
+              // A. Tell object it was dropped (Triggers Component 1)
+              this.grabbedEl.emit('grab-end');
+              
+              // B. Put back in scene
+              this.el.sceneEl.object3D.attach(this.grabbedEl.object3D);
+              
+              this.grabbedEl = null;
+            }
+          });
+        }
+      });
+    </script>
+  </head>
+
+  <body>
+    <a-scene 
+      physics="debug: false; gravity: -9.8"
+      xr-mode-ui="XRMode: xr" 
+      webxr="optionalFeatures: hit-test"
+      renderer="colorManagement: true; exposure: 1; toneMapping: ACESFilmic">
+
+      <a-assets>
+        <img id="ubuntu-img" src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Ubuntu_logo_and_wordmark.svg/512px-Ubuntu_logo_and_wordmark.svg.png" crossorigin="anonymous">
+        
+        <a-asset-item id="my-model" src="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb"></a-asset-item>
+        
+        <a-mixin id="physics-object" 
+                 dynamic-body="shape: hull; mass: 2"
+                 auto-toggle-physics
+                 class="grabbable"></a-mixin>
+      </a-assets>
+
+      <a-entity environment="preset: forest; lighting: none; shadow: true" hide-on-enter-ar></a-entity>
+      
+      <a-box position="0 0 0" rotation="-90 0 0" width="100" height="100" depth="0.1" static-body visible="false"></a-box>
+
+      <a-light type="directional" intensity="1" position="-1 2 2" cast-shadow="true"></a-light>
+      <a-light type="ambient" intensity="0.6"></a-light>
+
+
+      <a-entity position="-0.5 1.6 -0.5" 
+                class="grabbable"
+                auto-toggle-physics>
+         <a-box depth="0.05" height="0.6" width="1" material="src: #ubuntu-img; color: white"></a-box>
+      </a-entity>
+
+      <a-box 
+        position="0 2 -0.5" 
+        color="red" 
+        scale="0.2 0.2 0.2" 
+        mixin="physics-object">
+      </a-box>
+
+      <a-entity 
+        gltf-model="#my-model" 
+        position="0.5 2 -0.5" 
+        scale="0.5 0.5 0.5" 
+        mixin="physics-object">
+      </a-entity>
+
+
+      <a-entity camera position="0 1.6 0" look-controls wasd-controls></a-entity>
+
+      <a-entity id="rightHand" hand-tracking-grab-controls="hand: right"></a-entity>
+      <a-entity id="leftHand" hand-tracking-grab-controls="hand: left"></a-entity>
+
+      <a-entity id="rightControl" 
+                laser-controls="hand: right" 
+                raycaster="objects: .grabbable; far: 5"
+                controller-grab>
+      </a-entity>
+      <a-entity id="leftControl" 
+                laser-controls="hand: left" 
+                raycaster="objects: .grabbable; far: 5"
+                controller-grab>
+      </a-entity>
+
+    </a-scene>
+  </body>
+</html>
